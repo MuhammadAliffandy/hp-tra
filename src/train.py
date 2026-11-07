@@ -9,6 +9,13 @@ import time
 import argparse
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+DEFAULT_DATA_DIR = str(PROJECT_ROOT / "dataset_coco")
+DEFAULT_SAVE_DIR = str(PROJECT_ROOT / "checkpoints_dgx")
+
 import cv2
 import numpy as np
 import torch
@@ -23,8 +30,10 @@ from src.visualize import create_dual_mode_canvas
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Multi-Task Volumetric PoseNet on COCO")
-    parser.add_argument("--data-dir", type=str, default="./dataset_coco", help="Root path to COCO dataset (contained in project directory)")
-    parser.add_argument("--save-dir", type=str, default="./checkpoints", help="Directory to save model checkpoints")
+    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR,
+                        help="Root path to COCO dataset (strictly contained in project directory)")
+    parser.add_argument("--save-dir", type=str, default=DEFAULT_SAVE_DIR,
+                        help="Directory to save model checkpoints (contained in project directory)")
     parser.add_argument("--backbone", type=str, default="mobilenet_v3_large",
                         choices=["mobilenet_v3_large", "mobilenet_v3_small", "resnet18"],
                         help="Backbone architecture for feature extraction")

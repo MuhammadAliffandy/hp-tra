@@ -7,8 +7,8 @@
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR" || exit 1
 
-DATA_DIR="./dataset_coco"
-SAVE_DIR="./checkpoints_local"
+DATA_DIR="$PROJECT_DIR/dataset_coco"
+SAVE_DIR="$PROJECT_DIR/checkpoints_local"
 
 echo "======================================================================"
 echo "💻 LAUNCHING VOLUMETRIC POSENET (LOCAL WORKSTATION MODE)"

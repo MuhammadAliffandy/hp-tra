@@ -4,7 +4,13 @@ Exports PyTorch weights to native Float16 CoreML .mlpackage optimized for Apple 
 """
 
 import argparse
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import torch
 
 from src.model import MultiTaskVolumetricPoseNet
@@ -74,11 +80,15 @@ def export_to_coreml(
     print("Ready to drop into Xcode project (Sketsain iPadOS)!")
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CKPT = str(PROJECT_ROOT / "checkpoints_dgx" / "volumetric_posenet_best.pth")
+DEFAULT_OUTPUT = str(PROJECT_ROOT / "VolumetricPoseNet_ANE.mlpackage")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export Volumetric PoseNet to CoreML")
-    parser.add_argument("--checkpoint", type=str, default="./checkpoints/volumetric_posenet_best.pth",
+    parser.add_argument("--checkpoint", type=str, default=DEFAULT_CKPT,
                         help="Path to trained PyTorch .pth checkpoint")
-    parser.add_argument("--output", type=str, default="VolumetricPoseNet_ANE.mlpackage",
+    parser.add_argument("--output", type=str, default=DEFAULT_OUTPUT,
                         help="Output .mlpackage filename")
     parser.add_argument("--backbone", type=str, default="mobilenet_v3_large",
                         help="Backbone architecture matching checkpoint")

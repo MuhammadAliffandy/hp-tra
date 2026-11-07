@@ -55,9 +55,14 @@ def extract_zip(zip_path: Path, extract_to: Path, clean_zip: bool = False):
         zip_path.unlink()
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_DATA_DIR = str(PROJECT_ROOT / "dataset_coco")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Automated COCO 2017 Keypoints Downloader")
-    parser.add_argument("--data-dir", type=str, default="./dataset_coco", help="Root directory to store COCO dataset (contained in project for easy cleanup)")
+    parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR,
+                        help="Root directory to store COCO dataset (strictly contained in project folder)")
     parser.add_argument("--split", type=str, choices=["val", "train", "all"], default="all",
                         help="Data split to download: default 'all' (~20GB complete train + val dataset)")
     parser.add_argument("--clean-zip", action="store_true", default=True, help="Delete zip archives after extraction to save disk space")
