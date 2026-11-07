@@ -4,12 +4,13 @@
 # Automated Environment, Dataset Verification, and Background Execution on DGX
 # ==============================================================================
 # Usage:
-#   ./run_dgx.sh                  # Default: GPU 0, Batch 64, 80 Epochs
-#   ./run_dgx.sh 5                # Run on GPU 5
-#   ./run_dgx.sh 2 128 100        # Run on GPU 2, Batch Size 128, 100 Epochs
+#   ./run_dgx.sh                  # Default: GPU 1, Batch 64, 80 Epochs
+#   ./run_dgx.sh 2                # Run on GPU 2
+#   ./run_dgx.sh 1 128 100        # Run on GPU 1, Batch Size 128, 100 Epochs
 # ==============================================================================
 
-GPU_ID=${1:-0}
+# Default GPU is explicitly set to Device 1
+GPU_ID=${1:-1}
 BATCH_SIZE=${2:-64}
 EPOCHS=${3:-80}
 
@@ -29,12 +30,13 @@ echo "🚀 LAUNCHING MULTI-TASK VOLUMETRIC POSENET ON DGX CLUSTER"
 echo "======================================================================"
 echo "📂 Project Root  : $PROJECT_DIR"
 echo "🐍 Target Conda  : $ENV_NAME (Python 3.10.2)"
-echo "🎮 GPU Device    : CUDA_VISIBLE_DEVICES=$GPU_ID"
+echo "🎮 Default GPU   : CUDA_VISIBLE_DEVICES=$GPU_ID (Device 1)"
 echo "📦 Batch Size    : $BATCH_SIZE"
 echo "🔄 Total Epochs  : $EPOCHS"
 echo "📁 Dataset Dir   : $DATA_DIR (Contained in project for easy cleanup)"
 echo "💾 Checkpoints   : $SAVE_DIR"
-echo "📝 Log File      : $LOG_FILE"
+echo "📝 Master Log    : $LOG_FILE"
+echo "🛡️ Mode          : 100% DISCONNECT-PROOF (nohup + disown)"
 echo "======================================================================"
 
 # ------------------------------------------------------------------------------
@@ -80,32 +82,50 @@ python3 -c "import numpy as np; exit(0 if int(np.__version__.split('.')[0]) < 2 
 }
 
 # ------------------------------------------------------------------------------
-# 3. Automated Dataset Check (Complete COCO 2017 Dataset: Train + Val)
+# 3. Disconnect-Proof Execution (nohup + disown on BOTH Download & Training)
 # ------------------------------------------------------------------------------
-if [ ! -d "$DATA_DIR/train2017" ] || [ ! -f "$DATA_DIR/annotations/person_keypoints_train2017.json" ]; then
-    echo "📥 Complete COCO dataset not detected in $DATA_DIR."
-    echo "⬇️ Initiating automated download of COMPLETE dataset (train + val + annotations)..."
-    python3 download_coco.py --data-dir "$DATA_DIR" --split all --clean-zip
-fi
+# We wrap the entire process (dataset download if missing + training) into
+# a background runner so even if SSH drops or laptop disconnects, the
+# pipeline WILL NEVER DIE!
+# ------------------------------------------------------------------------------
 
-# ------------------------------------------------------------------------------
-# 4. Launch Training in Background (nohup)
-# ------------------------------------------------------------------------------
-echo "🔥 Starting background training process..."
-nohup python3 -u src/train.py \
-    --data-dir     "$DATA_DIR" \
-    --save-dir     "$SAVE_DIR" \
-    --backbone     "mobilenet_v3_large" \
-    --epochs       "$EPOCHS" \
-    --batch-size   "$BATCH_SIZE" \
-    --lr           5e-4 \
-    --num-workers  4 \
-    --device       "cuda" \
-    > "$LOG_FILE" 2>&1 &
+echo "🛡️ Launching complete pipeline under nohup (immune to SSH disconnect)..."
+
+nohup bash -c "
+    cd '$PROJECT_DIR' || exit 1
+    
+    # Step A: Automated Complete Dataset Download (If missing)
+    if [ ! -d '$DATA_DIR/train2017' ] || [ ! -f '$DATA_DIR/annotations/person_keypoints_train2017.json' ]; then
+        echo \"📥 [$(date '+%Y-%m-%d %H:%M:%S')] Complete COCO dataset not detected in $DATA_DIR.\"
+        echo \"⬇️ [$(date '+%Y-%m-%d %H:%M:%S')] Initiating automated download of COMPLETE dataset (train + val + annotations)...\"
+        python3 download_coco.py --data-dir '$DATA_DIR' --split all --clean-zip
+    else
+        echo \"✅ [$(date '+%Y-%m-%d %H:%M:%S')] Complete COCO 2017 dataset verified in $DATA_DIR.\"
+    fi
+
+    # Step B: Headless Multi-Task Volumetric Training
+    echo \"🔥 [$(date '+%Y-%m-%d %H:%M:%S')] Starting training process on GPU $GPU_ID (CUDA_VISIBLE_DEVICES=$GPU_ID)...\"
+    python3 -u src/train.py \
+        --data-dir     '$DATA_DIR' \
+        --save-dir     '$SAVE_DIR' \
+        --backbone     'mobilenet_v3_large' \
+        --epochs       '$EPOCHS' \
+        --batch-size   '$BATCH_SIZE' \
+        --lr           5e-4 \
+        --num-workers  4 \
+        --device       'cuda'
+" > "$LOG_FILE" 2>&1 &
 
 PID=$!
+disown $PID 2>/dev/null || true
+
 echo "======================================================================"
-echo "✅ Training successfully launched in background! (PID: $PID)"
+echo "✅ PIPELINE LAUNCHED IN BACKGROUND (DISCONNECT-PROOF)!"
+echo "   PID: $PID"
+echo "   GPU: Device $GPU_ID (CUDA_VISIBLE_DEVICES=$GPU_ID)"
+echo ""
+echo "💡 You can now safely close your terminal, shut down SSH, or disconnect."
+echo "   The entire download and training will run continuously in the background!"
 echo ""
 echo "📊 How to monitor execution live:"
 echo "   tail -f $LOG_FILE"

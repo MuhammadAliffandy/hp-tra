@@ -46,14 +46,15 @@ pip install -r requirements.txt
 python3 download_coco.py
 ```
 
-### 3. One-Command Background Execution on DGX
+### 3. One-Command Background Execution on DGX (100% Disconnect-Proof)
 ```bash
-# Menjalankan di GPU 0 secara otomatis di background (nohup):
+# Menjalankan di GPU 1 secara default di background (nohup + disown):
 ./run_dgx.sh
 
-# Atau jika ingin memilih nomor GPU tertentu (misal GPU 5):
-./run_dgx.sh 5
+# Atau jika ingin memilih nomor GPU tertentu (misal GPU 2):
+# ./run_dgx.sh 2
 ```
+> **Keunggulan Disconnect-Proof:** Seluruh proses (download dataset jika belum ada + training 80 epoch) berjalan di bawah `nohup` dan `disown`. Anda bisa langsung menutup terminal SSH atau mematikan laptop tanpa khawatir proses training terhenti!
 
 ### 4. Monitoring & Process Management
 ```bash
