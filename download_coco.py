@@ -58,9 +58,9 @@ def extract_zip(zip_path: Path, extract_to: Path, clean_zip: bool = False):
 def main():
     parser = argparse.ArgumentParser(description="Automated COCO 2017 Keypoints Downloader")
     parser.add_argument("--data-dir", type=str, default="./dataset_coco", help="Root directory to store COCO dataset (contained in project for easy cleanup)")
-    parser.add_argument("--split", type=str, choices=["val", "train", "all"], default="val",
-                        help="Data split to download: 'val' (~1.2GB), 'train' (~19GB), or 'all' (~20GB)")
-    parser.add_argument("--clean-zip", action="store_true", help="Delete zip archives after extraction to save disk space")
+    parser.add_argument("--split", type=str, choices=["val", "train", "all"], default="all",
+                        help="Data split to download: default 'all' (~20GB complete train + val dataset)")
+    parser.add_argument("--clean-zip", action="store_true", default=True, help="Delete zip archives after extraction to save disk space")
     args = parser.parse_args()
 
     root_dir = Path(args.data_dir).resolve()

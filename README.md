@@ -40,13 +40,10 @@ Unlike standard pose estimators that only produce flat 2D stick figures, **Neura
 pip install -r requirements.txt
 ```
 
-### 2. Auto-Download MS-COCO Keypoints Dataset
+### 2. Auto-Download Complete MS-COCO Keypoints Dataset (1-Command)
 ```bash
-# Opsi A: Download Val Split (~1.2 GB, ideal untuk smoke test cepat):
-python3 download_coco.py --split val
-
-# Opsi B: Download Full Training Set (~20 GB untuk main training):
-python3 download_coco.py --split all --clean-zip
+# Otomatis mengunduh seluruh dataset lengkap (train2017 + val2017 + annotations ~20 GB):
+python3 download_coco.py
 ```
 
 ### 3. One-Command Background Execution on DGX

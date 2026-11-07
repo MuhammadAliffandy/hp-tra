@@ -80,12 +80,12 @@ python3 -c "import numpy as np; exit(0 if int(np.__version__.split('.')[0]) < 2 
 }
 
 # ------------------------------------------------------------------------------
-# 3. Automated Dataset Check (Contained directly inside ./dataset_coco)
+# 3. Automated Dataset Check (Complete COCO 2017 Dataset: Train + Val)
 # ------------------------------------------------------------------------------
-if [ ! -f "$DATA_DIR/annotations/person_keypoints_val2017.json" ]; then
-    echo "📥 COCO dataset not found in $DATA_DIR."
-    echo "⬇️ Initiating automated download directly to project folder..."
-    python3 download_coco.py --data-dir "$DATA_DIR" --split val
+if [ ! -d "$DATA_DIR/train2017" ] || [ ! -f "$DATA_DIR/annotations/person_keypoints_train2017.json" ]; then
+    echo "📥 Complete COCO dataset not detected in $DATA_DIR."
+    echo "⬇️ Initiating automated download of COMPLETE dataset (train + val + annotations)..."
+    python3 download_coco.py --data-dir "$DATA_DIR" --split all --clean-zip
 fi
 
 # ------------------------------------------------------------------------------
