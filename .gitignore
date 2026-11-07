@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Datasets (Contained within project directory for easy cleanup)
+dataset_coco/
+data/
+zips/
+*.zip
+*.tar.gz
+
+# Model Weights, Checkpoints & Training Logs
+checkpoints/
+checkpoints_dgx/
+checkpoints_local/
+snapshots/
+*.pth
+*.pt
+*.mlpackage
+*.log
+
+# Environment & Virtual Environments
+.venv/
+venv/
+env/
+
+# Operating System & IDE Artifacts
+.DS_Store
+.idea/
+.vscode/
+.ipynb_checkpoints/
+neural_gesture_mannequin_colab.ipynb

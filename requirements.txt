@@ -1,0 +1,25 @@
+# ==============================================================================
+# Neural Gesture Mannequin — Dependencies for DGX & Local Environment
+# Compatible with Python 3.10.2 & NVIDIA DGX (A100 / H100)
+# ==============================================================================
+
+# Core Scientific & Array Operations (Strictly NumPy < 2 for ABI Stability)
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+
+# PyTorch & Torchvision (Supports CUDA 11.8 / 12.1 / 12.4 on DGX & MPS on Mac)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer Vision & Image Processing
+opencv-python>=4.7.0
+Pillow>=9.5.0
+matplotlib>=3.7.0
+
+# Dataset Tools & Official COCO API
+pycocotools>=2.0.6
+requests>=2.28.0
+tqdm>=4.65.0
+
+# Apple CoreML Export (Supported on macOS)
+coremltools>=7.0; sys_platform == 'darwin'
