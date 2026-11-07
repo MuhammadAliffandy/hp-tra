@@ -60,8 +60,8 @@ if [ "$CONDA_INITIALIZED" = true ]; then
     if conda env list | grep -E "^${ENV_NAME}\s" > /dev/null 2>&1; then
         echo "✅ Conda environment '$ENV_NAME' already exists."
     else
-        echo "📦 Creating fresh Conda environment '$ENV_NAME' with Python 3.10.2..."
-        conda create -y -n "$ENV_NAME" python=3.10.2
+        echo "📦 Creating fresh Conda environment '$ENV_NAME' with Python 3.10..."
+        conda create -y -n "$ENV_NAME" python=3.10 -c conda-forge || conda create -y -n "$ENV_NAME" python=3.10
     fi
     echo "⚡ Activating environment '$ENV_NAME'..."
     conda activate "$ENV_NAME"
@@ -93,6 +93,12 @@ echo "🛡️ Launching complete pipeline under nohup (immune to SSH disconnect)
 
 nohup bash -c "
     cd '$PROJECT_DIR' || exit 1
+    
+    # Activate hp_env in subshell
+    if command -v conda &> /dev/null; then
+        eval \"\$(conda shell.bash hook 2>/dev/null)\"
+        conda activate '$ENV_NAME' 2>/dev/null || true
+    fi
     
     # Step A: Automated Complete Dataset Download (If missing)
     if [ ! -d '$DATA_DIR/train2017' ] || [ ! -f '$DATA_DIR/annotations/person_keypoints_train2017.json' ]; then
