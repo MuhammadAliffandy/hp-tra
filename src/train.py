@@ -93,6 +93,11 @@ def main():
         is_train=False
     )
 
+    if len(train_dataset) == 0:
+        print(f"⚠️ Dataset images in {train_imgs} are not ready yet (0 samples found).")
+        print("Please wait for download_coco.py to finish downloading and extracting images.")
+        sys.exit(1)
+
     pin_mem = "cuda" in args.device
     train_loader = DataLoader(
         train_dataset,
