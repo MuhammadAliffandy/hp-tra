@@ -5,7 +5,7 @@ Mode 2: Volume-Based Model (3D Tapered Cylinders, Cross-Contour Ellipses & Torso
 """
 
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import cv2
 import numpy as np
 import torch
@@ -199,3 +199,155 @@ def create_dual_mode_canvas(
     # Combine into a horizontal strip
     canvas_4panel = np.hstack([raw_bgr, panel_skeleton, panel_volume, panel_combined])
     return canvas_4panel
+
+
+def generate_joint_driven_anime_sketch(
+    coords_np: np.ndarray,
+    volume_params: Optional[np.ndarray] = None,
+    vis_np: Optional[np.ndarray] = None,
+    canvas_size: int = 512,
+    style: str = "sepia"  # "sepia", "blue_pencil", or "graphite"
+) -> np.ndarray:
+    """
+    Synthesizes a 2D Anime Mannequin Pose Base (Atari Underdrawing) strictly driven
+    by predicted 2D joint coordinates and muscle volume parameters.
+    No photorealistic clothes tracing — produces clean structural anatomy guide lines.
+    """
+    w = h = canvas_size
+    canvas = np.full((h, w, 3), 255, dtype=np.uint8)
+
+    # Style Color Palettes
+    if style == "sepia":
+        c_main = (65, 80, 115)     # Warm sepia brown RGB(115, 80, 65)
+        c_guide = (120, 135, 160)  # Soft guide lines
+        c_joint = (90, 105, 135)   # Pivot joints
+    elif style == "blue_pencil":
+        c_main = (210, 140, 70)    # Non-photo blue RGB(70, 140, 210)
+        c_guide = (230, 180, 130)
+        c_joint = (220, 160, 100)
+    else:  # graphite
+        c_main = (50, 50, 50)
+        c_guide = (140, 140, 140)
+        c_joint = (90, 90, 90)
+
+    if volume_params is None:
+        volume_params = np.array([0.10, 0.18, 0.06, 0.05, 0.09, 0.07], dtype=np.float32)
+    if vis_np is None:
+        vis_np = np.ones(17, dtype=np.float32)
+
+    # Pixel radii
+    head_r = max(18, int(volume_params[0] * w))
+    torso_w = max(28, int(volume_params[1] * w))
+    uarm_r = max(10, int(volume_params[2] * w))
+    farm_r = max(8, int(volume_params[3] * w))
+    thigh_r = max(16, int(volume_params[4] * w))
+    calf_r = max(12, int(volume_params[5] * w))
+
+    def get_pt(idx):
+        return (int(coords_np[idx, 0] * w), int(coords_np[idx, 1] * h))
+
+    # Helper: draw curved anatomical limb with muscle contour
+    def draw_muscle_limb(p1, p2, r_top, r_bot):
+        x1, y1 = p1
+        x2, y2 = p2
+        dx, dy = x2 - x1, y2 - y1
+        dist = math.hypot(dx, dy)
+        if dist < 8:
+            return
+        ux, uy = -dy / dist, dx / dist
+
+        mid_x, mid_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        r_mid = max(r_top, r_bot) * 1.12
+
+        pts_left = np.array([
+            [int(x1 + ux * r_top), int(y1 + uy * r_top)],
+            [int(mid_x + ux * r_mid), int(mid_y + uy * r_mid)],
+            [int(x2 + ux * r_bot), int(y2 + uy * r_bot)]
+        ], dtype=np.int32)
+
+        pts_right = np.array([
+            [int(x1 - ux * r_top), int(y1 - uy * r_top)],
+            [int(mid_x - ux * r_mid), int(mid_y - uy * r_mid)],
+            [int(x2 - ux * r_bot), int(y2 - uy * r_bot)]
+        ], dtype=np.int32)
+
+        cv2.polylines(canvas, [pts_left], isClosed=False, color=c_main, thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(canvas, [pts_right], isClosed=False, color=c_main, thickness=2, lineType=cv2.LINE_AA)
+
+        angle = math.degrees(math.atan2(dy, dx))
+        cv2.ellipse(canvas, (int(x2), int(y2)), (r_bot, max(3, int(r_bot * 0.4))), angle, 0, 360, c_guide, 1, cv2.LINE_AA)
+
+    # 1. Torso, Clavicle & Spine
+    if vis_np[5] > 0.2 and vis_np[6] > 0.2:
+        ls, rs = get_pt(5), get_pt(6)
+        lh = get_pt(11) if vis_np[11] > 0.2 else (ls[0], ls[1] + int(h * 0.35))
+        rh = get_pt(12) if vis_np[12] > 0.2 else (rs[0], rs[1] + int(h * 0.35))
+
+        mid_sh = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
+        mid_hip = ((lh[0] + rh[0]) // 2, (lh[1] + rh[1]) // 2)
+
+        # Spinal gesture line
+        cv2.line(canvas, mid_sh, mid_hip, c_guide, thickness=1, lineType=cv2.LINE_AA)
+
+        # Clavicle / Collarbone V-line
+        neck_base = (mid_sh[0], mid_sh[1] - int(head_r * 0.3))
+        cv2.line(canvas, neck_base, ls, c_main, thickness=2, lineType=cv2.LINE_AA)
+        cv2.line(canvas, neck_base, rs, c_main, thickness=2, lineType=cv2.LINE_AA)
+
+        # Ribcage Chest Oval
+        mid_chest = ((mid_sh[0] * 2 + mid_hip[0]) // 3, (mid_sh[1] * 2 + mid_hip[1]) // 3)
+        chest_ry = int(torso_w * 0.9)
+        chest_rx = int(torso_w * 0.8)
+        cv2.ellipse(canvas, mid_chest, (chest_rx, chest_ry), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
+
+        # Pelvic Hip Bowl
+        pelvis_ry = int(torso_w * 0.65)
+        pelvis_rx = int(torso_w * 0.75)
+        cv2.ellipse(canvas, mid_hip, (pelvis_rx, pelvis_ry), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
+
+        # Torso lateral contour lines
+        cv2.line(canvas, (mid_chest[0] - chest_rx, mid_chest[1]), (mid_hip[0] - pelvis_rx, mid_hip[1]), c_main, 2, cv2.LINE_AA)
+        cv2.line(canvas, (mid_chest[0] + chest_rx, mid_chest[1]), (mid_hip[0] + pelvis_rx, mid_hip[1]), c_main, 2, cv2.LINE_AA)
+
+    # 2. Head with Facial Crosshairs
+    head_center = get_pt(0) if vis_np[0] > 0.2 else ((get_pt(1)[0] + get_pt(2)[0]) // 2, (get_pt(1)[1] + get_pt(2)[1]) // 2)
+    cv2.ellipse(canvas, head_center, (head_r, int(head_r * 1.25)), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
+    cv2.ellipse(canvas, head_center, (head_r, int(head_r * 0.35)), 0, 0, 360, c_guide, thickness=1, lineType=cv2.LINE_AA)
+    cv2.line(canvas, (head_center[0], head_center[1] - int(head_r * 1.25)), (head_center[0], head_center[1] + int(head_r * 1.25)), c_guide, 1, cv2.LINE_AA)
+
+    # 3. Shoulder Pivot Joints
+    if vis_np[5] > 0.2:
+        cv2.circle(canvas, get_pt(5), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+    if vis_np[6] > 0.2:
+        cv2.circle(canvas, get_pt(6), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+
+    # 4. Upper Limbs
+    if vis_np[5] > 0.2 and vis_np[7] > 0.2:
+        draw_muscle_limb(get_pt(5), get_pt(7), uarm_r, int(uarm_r * 0.8))
+    if vis_np[7] > 0.2 and vis_np[9] > 0.2:
+        draw_muscle_limb(get_pt(7), get_pt(9), int(uarm_r * 0.8), farm_r)
+        cv2.circle(canvas, get_pt(9), int(farm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+
+    if vis_np[6] > 0.2 and vis_np[8] > 0.2:
+        draw_muscle_limb(get_pt(6), get_pt(8), uarm_r, int(uarm_r * 0.8))
+    if vis_np[8] > 0.2 and vis_np[10] > 0.2:
+        draw_muscle_limb(get_pt(8), get_pt(10), int(uarm_r * 0.8), farm_r)
+        cv2.circle(canvas, get_pt(10), int(farm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+
+    # 5. Lower Limbs
+    if vis_np[11] > 0.2 and vis_np[13] > 0.2:
+        draw_muscle_limb(get_pt(11), get_pt(13), thigh_r, int(thigh_r * 0.75))
+        cv2.circle(canvas, get_pt(13), int(thigh_r * 0.7), c_joint, 1, cv2.LINE_AA)
+    if vis_np[13] > 0.2 and vis_np[15] > 0.2:
+        draw_muscle_limb(get_pt(13), get_pt(15), int(thigh_r * 0.75), calf_r)
+        cv2.circle(canvas, get_pt(15), int(calf_r * 0.7), c_joint, 1, cv2.LINE_AA)
+
+    if vis_np[12] > 0.2 and vis_np[14] > 0.2:
+        draw_muscle_limb(get_pt(12), get_pt(14), thigh_r, int(thigh_r * 0.75))
+        cv2.circle(canvas, get_pt(14), int(thigh_r * 0.7), c_joint, 1, cv2.LINE_AA)
+    if vis_np[14] > 0.2 and vis_np[16] > 0.2:
+        draw_muscle_limb(get_pt(14), get_pt(16), int(thigh_r * 0.75), calf_r)
+        cv2.circle(canvas, get_pt(16), int(calf_r * 0.7), c_joint, 1, cv2.LINE_AA)
+
+    return cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
