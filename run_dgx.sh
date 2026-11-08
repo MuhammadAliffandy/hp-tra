@@ -82,14 +82,17 @@ python3 -c "import numpy as np; exit(0 if int(np.__version__.split('.')[0]) < 2 
 }
 
 # ------------------------------------------------------------------------------
-# 3. Disconnect-Proof Execution (nohup + disown on BOTH Download & Training)
+# 3. Dataset Verification (NO Auto-Download from Web!)
 # ------------------------------------------------------------------------------
-# We wrap the entire process (dataset download if missing + training) into
-# a background runner so even if SSH drops or laptop disconnects, the
-# pipeline WILL NEVER DIE!
-# ------------------------------------------------------------------------------
+# Ensure dataset is present before launching training.
+if [ ! -f "$DATA_DIR/annotations/person_keypoints_val2017.json" ] && [ ! -f "$DATA_DIR/annotations/person_keypoints_train2017.json" ]; then
+    echo "❌ ERROR: Dataset annotations not found in $DATA_DIR/annotations/!"
+    echo "👉 Please transfer your dataset first via rclone or download_coco.py."
+    echo "   Example: rclone copy xxdrive:coco_dataset/annotations_trainval2017.zip ./dataset_coco/zips/ -P"
+    exit 1
+fi
 
-echo "🛡️ Launching complete pipeline under nohup (immune to SSH disconnect)..."
+echo "🛡️ Launching training pipeline under nohup (immune to SSH disconnect)..."
 
 nohup bash -c "
     cd '$PROJECT_DIR' || exit 1
@@ -99,18 +102,9 @@ nohup bash -c "
         eval \"\$(conda shell.bash hook 2>/dev/null)\"
         conda activate '$ENV_NAME' 2>/dev/null || true
     fi
-    
-    # Step A: Automated Complete Dataset Download (If missing)
-    if [ ! -d '$DATA_DIR/train2017' ] || [ ! -f '$DATA_DIR/annotations/person_keypoints_train2017.json' ]; then
-        echo \"📥 [$(date '+%Y-%m-%d %H:%M:%S')] Complete COCO dataset not detected in $DATA_DIR.\"
-        echo \"⬇️ [$(date '+%Y-%m-%d %H:%M:%S')] Initiating automated download of COMPLETE dataset (train + val + annotations)...\"
-        python3 download_coco.py --data-dir '$DATA_DIR' --split all --clean-zip
-    else
-        echo \"✅ [$(date '+%Y-%m-%d %H:%M:%S')] Complete COCO 2017 dataset verified in $DATA_DIR.\"
-    fi
 
-    # Step B: Headless Multi-Task Volumetric Training
-    echo \"🔥 [$(date '+%Y-%m-%d %H:%M:%S')] Starting training process on GPU $GPU_ID (CUDA_VISIBLE_DEVICES=$GPU_ID)...\"
+    # Headless Multi-Task Volumetric Training
+    echo \"🔥 [\$(date '+%Y-%m-%d %H:%M:%S')] Starting training process on GPU $GPU_ID (CUDA_VISIBLE_DEVICES=$GPU_ID)...\"
     python3 -u src/train.py \
         --data-dir     '$DATA_DIR' \
         --save-dir     '$SAVE_DIR' \
