@@ -82,14 +82,34 @@ python3 -c "import numpy as np; exit(0 if int(np.__version__.split('.')[0]) < 2 
 }
 
 # ------------------------------------------------------------------------------
-# 3. Dataset Verification (NO Auto-Download from Web!)
+# 3. Cleanup Leftover Zips & Strict Dataset Verification (Zero Download)
 # ------------------------------------------------------------------------------
-# Ensure dataset is present before launching training.
+# Automatically clean up any leftover .zip files to free up disk space
+if [ -d "$DATA_DIR/zips" ]; then
+    echo "🧹 Removing leftover zip archive directory ($DATA_DIR/zips)..."
+    rm -rf "$DATA_DIR/zips"
+fi
+rm -f "$DATA_DIR"/*.zip 2>/dev/null || true
+
+# Verify dataset existence directly
+echo "🔍 Checking dataset directories in $DATA_DIR..."
+
 if [ ! -f "$DATA_DIR/annotations/person_keypoints_val2017.json" ] && [ ! -f "$DATA_DIR/annotations/person_keypoints_train2017.json" ]; then
-    echo "❌ ERROR: Dataset annotations not found in $DATA_DIR/annotations/!"
-    echo "👉 Please transfer your dataset first via rclone or download_coco.py."
-    echo "   Example: rclone copy xxdrive:coco_dataset/annotations_trainval2017.zip ./dataset_coco/zips/ -P"
+    echo "❌ ERROR: Dataset annotations missing in $DATA_DIR/annotations/!"
+    echo "👉 Please ensure annotations are extracted into $DATA_DIR/annotations/."
     exit 1
+fi
+
+if [ -d "$DATA_DIR/train2017" ]; then
+    TRAIN_COUNT=$(ls -1 "$DATA_DIR/train2017" 2>/dev/null | wc -l)
+    echo "✅ Found train2017 dataset with $TRAIN_COUNT images."
+else
+    echo "⚠️ train2017 directory not found, will use val2017 for training smoke test."
+fi
+
+if [ -d "$DATA_DIR/val2017" ]; then
+    VAL_COUNT=$(ls -1 "$DATA_DIR/val2017" 2>/dev/null | wc -l)
+    echo "✅ Found val2017 dataset with $VAL_COUNT images."
 fi
 
 echo "🛡️ Launching training pipeline under nohup (immune to SSH disconnect)..."

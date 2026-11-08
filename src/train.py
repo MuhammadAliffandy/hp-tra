@@ -69,6 +69,9 @@ def main():
         print("⚠️ train2017 images or annotations not found! Using val2017 for both train and validation smoke test.")
         train_json = val_json
         train_imgs = val_imgs
+    else:
+        print(f"✅ Found complete train2017 dataset at: {train_imgs}")
+        print(f"✅ Found annotations at: {train_json}")
 
     print("======================================================================")
     print("🚀 LAUNCHING MULTI-TASK VOLUMETRIC POSENET TRAINING")
