@@ -237,3 +237,62 @@ def export_to_obj(vertices: np.ndarray, faces: np.ndarray, filepath: str):
         for tri in faces:
             f.write(f"f {tri[0]+1} {tri[1]+1} {tri[2]+1}\n")
     print(f"💾 Exported 3D mesh to {filepath} ({len(vertices)} verts, {len(faces)} faces)")
+
+# ==============================================================================
+# Backward-Compatibility Exports & Aliases
+# ==============================================================================
+build_volumetric_mannequin = build_3d_mannequin_from_joints
+
+SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]
+
+TEMPLATE_OFFSETS = np.array([
+    [0.0, 0.0, 0.0],          # 0: Pelvis
+    [0.09, -0.08, 0.0],       # 1: L_Hip
+    [-0.09, -0.08, 0.0],      # 2: R_Hip
+    [0.0, 0.12, 0.0],         # 3: Spine1
+    [0.0, -0.38, 0.0],        # 4: L_Knee
+    [0.0, -0.38, 0.0],        # 5: R_Knee
+    [0.0, 0.14, 0.0],         # 6: Spine2
+    [0.0, -0.38, 0.0],        # 7: L_Ankle
+    [0.0, -0.38, 0.0],        # 8: R_Ankle
+    [0.0, 0.14, 0.0],         # 9: Spine3
+    [0.0, -0.08, 0.14],       # 10: L_Foot
+    [0.0, -0.08, 0.14],       # 11: R_Foot
+    [0.0, 0.12, 0.0],         # 12: Neck
+    [0.08, 0.08, -0.02],      # 13: L_Collar
+    [-0.08, 0.08, -0.02],     # 14: R_Collar
+    [0.0, 0.18, 0.0],         # 15: Head
+    [0.10, 0.0, 0.0],         # 16: L_Shoulder
+    [-0.10, 0.0, 0.0],        # 17: R_Shoulder
+    [0.0, -0.28, 0.0],        # 18: L_Elbow
+    [0.0, -0.28, 0.0],        # 19: R_Elbow
+    [0.0, -0.25, 0.0],        # 20: L_Wrist
+    [0.0, -0.25, 0.0],        # 21: R_Wrist
+    [0.0, -0.10, 0.0],        # 22: L_Hand
+    [0.0, -0.10, 0.0],        # 23: R_Hand
+], dtype=np.float32)
+
+def forward_kinematics(rotmats: np.ndarray, shape_beta: np.ndarray):
+    scale_y = 1.0 + 0.05 * float(shape_beta[0])
+    scale_fat = 1.0 + 0.06 * float(shape_beta[1])
+
+    offsets = TEMPLATE_OFFSETS.copy()
+    offsets[:, 1] *= scale_y
+    offsets[:, 0] *= scale_fat
+    offsets[:, 2] *= scale_fat
+
+    joints_3d = np.zeros((24, 3), dtype=np.float32)
+    global_rotmats = np.zeros((24, 3, 3), dtype=np.float32)
+
+    for i in range(24):
+        p = SMPL_PARENTS[i]
+        local_R = rotmats[i]
+        if p == -1:
+            global_rotmats[i] = local_R
+            joints_3d[i] = offsets[i]
+        else:
+            global_rotmats[i] = np.dot(global_rotmats[p], local_R)
+            joints_3d[i] = joints_3d[p] + np.dot(global_rotmats[p], offsets[i])
+
+    return joints_3d, global_rotmats
+
