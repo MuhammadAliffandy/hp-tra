@@ -13,6 +13,7 @@ zips/
 # Model Weights, Checkpoints & Training Logs
 checkpoints/
 checkpoints_dgx/
+checkpoints_dgx_hmr/
 checkpoints_local/
 snapshots/
 *.pth
