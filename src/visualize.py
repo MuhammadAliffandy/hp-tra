@@ -201,6 +201,23 @@ def create_dual_mode_canvas(
     return canvas_4panel
 
 
+def get_bezier_curve(p0, p1, p2, p3, num_pts=25):
+    t = np.linspace(0, 1, num_pts)[:, None]
+    curve = (1-t)**3 * p0 + 3*(1-t)**2 * t * p1 + 3*(1-t) * t**2 * p2 + t**3 * p3
+    return curve.astype(np.int32)
+
+
+def draw_smooth_tapered_curve(canvas, p_start, p_ctrl1, p_ctrl2, p_end, color, base_thickness=2):
+    """Draws a smooth cubic Bezier curve with tapering thickness."""
+    curve = get_bezier_curve(np.array(p_start), np.array(p_ctrl1), np.array(p_ctrl2), np.array(p_end), num_pts=30)
+    for i in range(len(curve) - 1):
+        pt1 = tuple(curve[i])
+        pt2 = tuple(curve[i + 1])
+        progress = i / max(1, len(curve) - 1)
+        thick = max(1, int(round(base_thickness * (1.0 + 0.4 * math.sin(progress * math.pi)))))
+        cv2.line(canvas, pt1, pt2, color, thickness=thick, lineType=cv2.LINE_AA)
+
+
 def generate_joint_driven_anime_sketch(
     coords_np: np.ndarray,
     volume_params: Optional[np.ndarray] = None,
@@ -209,145 +226,194 @@ def generate_joint_driven_anime_sketch(
     style: str = "sepia"  # "sepia", "blue_pencil", or "graphite"
 ) -> np.ndarray:
     """
-    Synthesizes a 2D Anime Mannequin Pose Base (Atari Underdrawing) strictly driven
+    Synthesizes an Organic 2D Anime Mannequin Pose Base (Atari Underdrawing) strictly driven
     by predicted 2D joint coordinates and muscle volume parameters.
-    No photorealistic clothes tracing — produces clean structural anatomy guide lines.
+    Features smooth cubic Bezier curves, tapered line weights, an hourglass torso silhouette,
+    an authentic anime jawline, and soft facial crosshair guidelines.
     """
     w = h = canvas_size
     canvas = np.full((h, w, 3), 255, dtype=np.uint8)
 
-    # Style Color Palettes
+    # Professional Manga / Anime Color Palettes (BGR for OpenCV)
     if style == "sepia":
-        c_main = (65, 80, 115)     # Warm sepia brown RGB(115, 80, 65)
-        c_guide = (120, 135, 160)  # Soft guide lines
-        c_joint = (90, 105, 135)   # Pivot joints
+        c_core  = (55, 70, 110)    # Deep warm sepia RGB(110, 70, 55)
+        c_outer = (75, 95, 135)    # Medium contour brown RGB(135, 95, 75)
+        c_guide = (140, 160, 185)  # Soft construction tan RGB(185, 160, 140)
+        c_joint = (110, 130, 160)  # Joint pivot ring RGB(160, 130, 110)
     elif style == "blue_pencil":
-        c_main = (210, 140, 70)    # Non-photo blue RGB(70, 140, 210)
-        c_guide = (230, 180, 130)
-        c_joint = (220, 160, 100)
-    else:  # graphite
-        c_main = (50, 50, 50)
-        c_guide = (140, 140, 140)
-        c_joint = (90, 90, 90)
+        c_core  = (200, 120, 50)   # Non-photo blue core RGB(50, 120, 200)
+        c_outer = (220, 150, 80)   # Medium blue contour RGB(80, 150, 220)
+        c_guide = (240, 195, 140)  # Soft guide blue RGB(140, 195, 240)
+        c_joint = (225, 170, 110)  # Pivot cyan RGB(110, 170, 225)
+    else:  # graphite pencil
+        c_core  = (40, 40, 40)
+        c_outer = (70, 70, 70)
+        c_guide = (150, 150, 150)
+        c_joint = (110, 110, 110)
 
     if volume_params is None:
         volume_params = np.array([0.10, 0.18, 0.06, 0.05, 0.09, 0.07], dtype=np.float32)
     if vis_np is None:
         vis_np = np.ones(17, dtype=np.float32)
 
-    # Pixel radii
-    head_r = max(18, int(volume_params[0] * w))
-    torso_w = max(28, int(volume_params[1] * w))
-    uarm_r = max(10, int(volume_params[2] * w))
-    farm_r = max(8, int(volume_params[3] * w))
-    thigh_r = max(16, int(volume_params[4] * w))
-    calf_r = max(12, int(volume_params[5] * w))
+    # Scale radii
+    head_r  = max(16, int(volume_params[0] * w))
+    torso_w = max(24, int(volume_params[1] * w))
+    uarm_r  = max(9, int(volume_params[2] * w))
+    farm_r  = max(7, int(volume_params[3] * w))
+    thigh_r = max(15, int(volume_params[4] * w))
+    calf_r  = max(11, int(volume_params[5] * w))
 
     def get_pt(idx):
-        return (int(coords_np[idx, 0] * w), int(coords_np[idx, 1] * h))
+        return (int(round(coords_np[idx, 0] * w)), int(round(coords_np[idx, 1] * h)))
 
-    # Helper: draw curved anatomical limb with muscle contour
-    def draw_muscle_limb(p1, p2, r_top, r_bot):
+    # 1. Smooth Organic Muscle Limbs with Curved Contours
+    def draw_organic_curved_limb(p1, p2, r1, r2, base_thick=2):
         x1, y1 = p1
         x2, y2 = p2
         dx, dy = x2 - x1, y2 - y1
-        dist = math.hypot(dx, dy)
-        if dist < 8:
+        length = math.hypot(dx, dy)
+        if length < 8:
             return
-        ux, uy = -dy / dist, dx / dist
+        ux, uy = -dy / length, dx / length
 
-        mid_x, mid_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-        r_mid = max(r_top, r_bot) * 1.12
+        # Outer curve (muscle flare)
+        c1_out = (x1 + ux * r1 + dx * 0.3, y1 + uy * r1 + dy * 0.3)
+        c2_out = (x1 + ux * (r1 * 1.15) + dx * 0.6, y1 + uy * (r1 * 1.15) + dy * 0.6)
+        end_out = (x2 + ux * r2, y2 + uy * r2)
 
-        pts_left = np.array([
-            [int(x1 + ux * r_top), int(y1 + uy * r_top)],
-            [int(mid_x + ux * r_mid), int(mid_y + uy * r_mid)],
-            [int(x2 + ux * r_bot), int(y2 + uy * r_bot)]
-        ], dtype=np.int32)
+        # Inner curve
+        c1_in = (x1 - ux * r1 + dx * 0.3, y1 - uy * r1 + dy * 0.3)
+        c2_in = (x1 - ux * (r2 * 1.05) + dx * 0.6, y1 - uy * (r2 * 1.05) + dy * 0.6)
+        end_in = (x2 - ux * r2, y2 - uy * r2)
 
-        pts_right = np.array([
-            [int(x1 - ux * r_top), int(y1 - uy * r_top)],
-            [int(mid_x - ux * r_mid), int(mid_y - uy * r_mid)],
-            [int(x2 - ux * r_bot), int(y2 - uy * r_bot)]
-        ], dtype=np.int32)
+        draw_smooth_tapered_curve(canvas, (x1 + ux * r1, y1 + uy * r1), c1_out, c2_out, end_out, c_outer, base_thick)
+        draw_smooth_tapered_curve(canvas, (x1 - ux * r1, y1 - uy * r1), c1_in, c2_in, end_in, c_outer, base_thick)
 
-        cv2.polylines(canvas, [pts_left], isClosed=False, color=c_main, thickness=2, lineType=cv2.LINE_AA)
-        cv2.polylines(canvas, [pts_right], isClosed=False, color=c_main, thickness=2, lineType=cv2.LINE_AA)
-
+        # Cross-contour perspective ring at joint
         angle = math.degrees(math.atan2(dy, dx))
-        cv2.ellipse(canvas, (int(x2), int(y2)), (r_bot, max(3, int(r_bot * 0.4))), angle, 0, 360, c_guide, 1, cv2.LINE_AA)
+        cv2.ellipse(canvas, (int(x2), int(y2)), (r2, max(2, int(r2 * 0.4))), angle, 0, 360, c_guide, 1, cv2.LINE_AA)
 
-    # 1. Torso, Clavicle & Spine
-    if vis_np[5] > 0.2 and vis_np[6] > 0.2:
+    # 2. Torso: Arched Spine (Line of Action), Ribcage Oval & Pelvic Silhouette
+    if vis_np[5] > 0.15 and vis_np[6] > 0.15:
         ls, rs = get_pt(5), get_pt(6)
-        lh = get_pt(11) if vis_np[11] > 0.2 else (ls[0], ls[1] + int(h * 0.35))
-        rh = get_pt(12) if vis_np[12] > 0.2 else (rs[0], rs[1] + int(h * 0.35))
+        lh = get_pt(11) if vis_np[11] > 0.15 else (ls[0], ls[1] + int(h * 0.35))
+        rh = get_pt(12) if vis_np[12] > 0.15 else (rs[0], rs[1] + int(h * 0.35))
 
-        mid_sh = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
+        mid_sh  = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
         mid_hip = ((lh[0] + rh[0]) // 2, (lh[1] + rh[1]) // 2)
 
-        # Spinal gesture line
-        cv2.line(canvas, mid_sh, mid_hip, c_guide, thickness=1, lineType=cv2.LINE_AA)
+        # Curving Line of Action (Spine gesture stroke)
+        spine_dx, spine_dy = mid_hip[0] - mid_sh[0], mid_hip[1] - mid_sh[1]
+        spine_norm = math.hypot(spine_dx, spine_dy)
+        if spine_norm > 10:
+            sp_ux, sp_uy = -spine_dy / spine_norm, spine_dx / spine_norm
+            arch_offset = int(torso_w * 0.25)
+            spine_ctrl = (mid_sh[0] + int(spine_dx * 0.5) + int(sp_ux * arch_offset),
+                          mid_sh[1] + int(spine_dy * 0.5) + int(sp_uy * arch_offset))
+            draw_smooth_tapered_curve(canvas, mid_sh, spine_ctrl, spine_ctrl, mid_hip, c_guide, base_thickness=1)
 
-        # Clavicle / Collarbone V-line
-        neck_base = (mid_sh[0], mid_sh[1] - int(head_r * 0.3))
-        cv2.line(canvas, neck_base, ls, c_main, thickness=2, lineType=cv2.LINE_AA)
-        cv2.line(canvas, neck_base, rs, c_main, thickness=2, lineType=cv2.LINE_AA)
+        # Soft Clavicle V-line
+        neck_anchor = (mid_sh[0], mid_sh[1] - int(head_r * 0.35))
+        cv2.line(canvas, neck_anchor, ls, c_outer, 2, cv2.LINE_AA)
+        cv2.line(canvas, neck_anchor, rs, c_outer, 2, cv2.LINE_AA)
+        cv2.circle(canvas, neck_anchor, 3, c_guide, -1, cv2.LINE_AA)
 
-        # Ribcage Chest Oval
-        mid_chest = ((mid_sh[0] * 2 + mid_hip[0]) // 3, (mid_sh[1] * 2 + mid_hip[1]) // 3)
-        chest_ry = int(torso_w * 0.9)
-        chest_rx = int(torso_w * 0.8)
-        cv2.ellipse(canvas, mid_chest, (chest_rx, chest_ry), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
+        # Ribcage Egg (tilted along shoulder angle)
+        sh_angle = math.degrees(math.atan2(rs[1] - ls[1], rs[0] - ls[0]))
+        mid_chest = (mid_sh[0] + int(spine_dx * 0.35), mid_sh[1] + int(spine_dy * 0.35))
+        chest_rx = int(torso_w * 0.85)
+        chest_ry = int(torso_w * 0.70)
+        cv2.ellipse(canvas, mid_chest, (chest_rx, chest_ry), sh_angle, 0, 360, c_core, 2, cv2.LINE_AA)
 
-        # Pelvic Hip Bowl
-        pelvis_ry = int(torso_w * 0.65)
-        pelvis_rx = int(torso_w * 0.75)
-        cv2.ellipse(canvas, mid_hip, (pelvis_rx, pelvis_ry), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
+        # Pelvis Bowl (tilted along hip angle)
+        hip_angle = math.degrees(math.atan2(rh[1] - lh[1], rh[0] - lh[0]))
+        pelvis_rx = int(torso_w * 0.78)
+        pelvis_ry = int(torso_w * 0.55)
+        cv2.ellipse(canvas, mid_hip, (pelvis_rx, pelvis_ry), hip_angle, 0, 360, c_core, 2, cv2.LINE_AA)
 
-        # Torso lateral contour lines
-        cv2.line(canvas, (mid_chest[0] - chest_rx, mid_chest[1]), (mid_hip[0] - pelvis_rx, mid_hip[1]), c_main, 2, cv2.LINE_AA)
-        cv2.line(canvas, (mid_chest[0] + chest_rx, mid_chest[1]), (mid_hip[0] + pelvis_rx, mid_hip[1]), c_main, 2, cv2.LINE_AA)
+        # Flowing hourglass waist lines connecting ribcage to hips
+        chest_l = (int(mid_chest[0] - math.cos(math.radians(sh_angle)) * chest_rx),
+                   int(mid_chest[1] - math.sin(math.radians(sh_angle)) * chest_rx))
+        pelvis_l = (int(mid_hip[0] - math.cos(math.radians(hip_angle)) * pelvis_rx),
+                    int(mid_hip[1] - math.sin(math.radians(hip_angle)) * pelvis_rx))
+        waist_l_mid = ((chest_l[0] + pelvis_l[0]) // 2 + int(torso_w * 0.15),
+                       (chest_l[1] + pelvis_l[1]) // 2)
+        draw_smooth_tapered_curve(canvas, chest_l, waist_l_mid, waist_l_mid, pelvis_l, c_core, base_thickness=2)
 
-    # 2. Head with Facial Crosshairs
-    head_center = get_pt(0) if vis_np[0] > 0.2 else ((get_pt(1)[0] + get_pt(2)[0]) // 2, (get_pt(1)[1] + get_pt(2)[1]) // 2)
-    cv2.ellipse(canvas, head_center, (head_r, int(head_r * 1.25)), 0, 0, 360, c_main, thickness=2, lineType=cv2.LINE_AA)
-    cv2.ellipse(canvas, head_center, (head_r, int(head_r * 0.35)), 0, 0, 360, c_guide, thickness=1, lineType=cv2.LINE_AA)
-    cv2.line(canvas, (head_center[0], head_center[1] - int(head_r * 1.25)), (head_center[0], head_center[1] + int(head_r * 1.25)), c_guide, 1, cv2.LINE_AA)
+        chest_r = (int(mid_chest[0] + math.cos(math.radians(sh_angle)) * chest_rx),
+                   int(mid_chest[1] + math.sin(math.radians(sh_angle)) * chest_rx))
+        pelvis_r = (int(mid_hip[0] + math.cos(math.radians(hip_angle)) * pelvis_rx),
+                    int(mid_hip[1] + math.sin(math.radians(hip_angle)) * pelvis_rx))
+        waist_r_mid = ((chest_r[0] + pelvis_r[0]) // 2 - int(torso_w * 0.15),
+                       (chest_r[1] + pelvis_r[1]) // 2)
+        draw_smooth_tapered_curve(canvas, chest_r, waist_r_mid, waist_r_mid, pelvis_r, c_core, base_thickness=2)
 
-    # 3. Shoulder Pivot Joints
-    if vis_np[5] > 0.2:
-        cv2.circle(canvas, get_pt(5), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
-    if vis_np[6] > 0.2:
-        cv2.circle(canvas, get_pt(6), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+    # 3. Head: Tapered Anime Jawline & Facial Crosshairs
+    head_pos = get_pt(0) if vis_np[0] > 0.15 else ((get_pt(1)[0] + get_pt(2)[0]) // 2, (get_pt(1)[1] + get_pt(2)[1]) // 2)
 
-    # 4. Upper Limbs
-    if vis_np[5] > 0.2 and vis_np[7] > 0.2:
-        draw_muscle_limb(get_pt(5), get_pt(7), uarm_r, int(uarm_r * 0.8))
-    if vis_np[7] > 0.2 and vis_np[9] > 0.2:
-        draw_muscle_limb(get_pt(7), get_pt(9), int(uarm_r * 0.8), farm_r)
-        cv2.circle(canvas, get_pt(9), int(farm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+    head_tilt = 0.0
+    if vis_np[1] > 0.15 and vis_np[2] > 0.15:
+        p_le, p_re = get_pt(1), get_pt(2)
+        head_tilt = math.degrees(math.atan2(p_re[1] - p_le[1], p_re[0] - p_le[0]))
+    elif vis_np[3] > 0.15 and vis_np[4] > 0.15:
+        p_la, p_ra = get_pt(3), get_pt(4)
+        head_tilt = math.degrees(math.atan2(p_ra[1] - p_la[1], p_ra[0] - p_la[0]))
 
-    if vis_np[6] > 0.2 and vis_np[8] > 0.2:
-        draw_muscle_limb(get_pt(6), get_pt(8), uarm_r, int(uarm_r * 0.8))
-    if vis_np[8] > 0.2 and vis_np[10] > 0.2:
-        draw_muscle_limb(get_pt(8), get_pt(10), int(uarm_r * 0.8), farm_r)
-        cv2.circle(canvas, get_pt(10), int(farm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+    # Cranium
+    cv2.ellipse(canvas, head_pos, (head_r, int(head_r * 1.15)), head_tilt, 0, 360, c_core, 2, cv2.LINE_AA)
 
-    # 5. Lower Limbs
-    if vis_np[11] > 0.2 and vis_np[13] > 0.2:
-        draw_muscle_limb(get_pt(11), get_pt(13), thigh_r, int(thigh_r * 0.75))
+    # Tapered Anime Chin Contour (Soft V-jaw)
+    chin_dist = int(head_r * 1.35)
+    rad_t = math.radians(head_tilt + 90)
+    chin_pt = (int(head_pos[0] + math.cos(rad_t) * chin_dist),
+               int(head_pos[1] + math.sin(rad_t) * chin_dist))
+    jaw_l = (int(head_pos[0] - math.cos(math.radians(head_tilt)) * head_r * 0.85 + math.cos(rad_t) * head_r * 0.5),
+             int(head_pos[1] - math.sin(math.radians(head_tilt)) * head_r * 0.85 + math.sin(rad_t) * head_r * 0.5))
+    jaw_r = (int(head_pos[0] + math.cos(math.radians(head_tilt)) * head_r * 0.85 + math.cos(rad_t) * head_r * 0.5),
+             int(head_pos[1] + math.sin(math.radians(head_tilt)) * head_r * 0.85 + math.sin(rad_t) * head_r * 0.5))
+    draw_smooth_tapered_curve(canvas, jaw_l, jaw_l, chin_pt, chin_pt, c_core, base_thickness=2)
+    draw_smooth_tapered_curve(canvas, jaw_r, jaw_r, chin_pt, chin_pt, c_core, base_thickness=2)
+
+    # Facial Crosshairs
+    cv2.ellipse(canvas, head_pos, (head_r, int(head_r * 0.32)), head_tilt, 0, 360, c_guide, 1, cv2.LINE_AA)
+    top_c = (int(head_pos[0] - math.cos(rad_t) * head_r * 1.1),
+             int(head_pos[1] - math.sin(rad_t) * head_r * 1.1))
+    cv2.line(canvas, top_c, chin_pt, c_guide, 1, cv2.LINE_AA)
+
+    # 4. Shoulders & Arms
+    if vis_np[5] > 0.15: cv2.circle(canvas, get_pt(5), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+    if vis_np[6] > 0.15: cv2.circle(canvas, get_pt(6), int(uarm_r * 0.9), c_joint, 1, cv2.LINE_AA)
+
+    if vis_np[5] > 0.15 and vis_np[7] > 0.15:
+        draw_organic_curved_limb(get_pt(5), get_pt(7), uarm_r, int(uarm_r * 0.82))
+        cv2.circle(canvas, get_pt(7), int(uarm_r * 0.7), c_joint, 1, cv2.LINE_AA)
+    if vis_np[7] > 0.15 and vis_np[9] > 0.15:
+        draw_organic_curved_limb(get_pt(7), get_pt(9), int(uarm_r * 0.82), farm_r)
+        cv2.circle(canvas, get_pt(9), int(farm_r * 0.85), c_joint, 1, cv2.LINE_AA)
+
+    if vis_np[6] > 0.15 and vis_np[8] > 0.15:
+        draw_organic_curved_limb(get_pt(6), get_pt(8), uarm_r, int(uarm_r * 0.82))
+        cv2.circle(canvas, get_pt(8), int(uarm_r * 0.7), c_joint, 1, cv2.LINE_AA)
+    if vis_np[8] > 0.15 and vis_np[10] > 0.15:
+        draw_organic_curved_limb(get_pt(8), get_pt(10), int(uarm_r * 0.82), farm_r)
+        cv2.circle(canvas, get_pt(10), int(farm_r * 0.85), c_joint, 1, cv2.LINE_AA)
+
+    # 5. Lower Limbs (Legs)
+    if vis_np[11] > 0.15 and vis_np[13] > 0.15:
+        draw_organic_curved_limb(get_pt(11), get_pt(13), thigh_r, int(thigh_r * 0.75))
         cv2.circle(canvas, get_pt(13), int(thigh_r * 0.7), c_joint, 1, cv2.LINE_AA)
-    if vis_np[13] > 0.2 and vis_np[15] > 0.2:
-        draw_muscle_limb(get_pt(13), get_pt(15), int(thigh_r * 0.75), calf_r)
+    if vis_np[13] > 0.15 and vis_np[15] > 0.15:
+        draw_organic_curved_limb(get_pt(13), get_pt(15), int(thigh_r * 0.75), calf_r)
         cv2.circle(canvas, get_pt(15), int(calf_r * 0.7), c_joint, 1, cv2.LINE_AA)
 
-    if vis_np[12] > 0.2 and vis_np[14] > 0.2:
-        draw_muscle_limb(get_pt(12), get_pt(14), thigh_r, int(thigh_r * 0.75))
+    if vis_np[12] > 0.15 and vis_np[14] > 0.15:
+        draw_organic_curved_limb(get_pt(12), get_pt(14), thigh_r, int(thigh_r * 0.75))
         cv2.circle(canvas, get_pt(14), int(thigh_r * 0.7), c_joint, 1, cv2.LINE_AA)
-    if vis_np[14] > 0.2 and vis_np[16] > 0.2:
-        draw_muscle_limb(get_pt(14), get_pt(16), int(thigh_r * 0.75), calf_r)
+    if vis_np[14] > 0.15 and vis_np[16] > 0.15:
+        draw_organic_curved_limb(get_pt(14), get_pt(16), int(thigh_r * 0.75), calf_r)
         cv2.circle(canvas, get_pt(16), int(calf_r * 0.7), c_joint, 1, cv2.LINE_AA)
 
     return cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
 
