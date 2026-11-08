@@ -1,12 +1,23 @@
 # 🎨 Neural Gesture Mannequin — Multi-Task Volumetric PoseNet
 
 **Author:** Muhammad Aliffandy (Apple Developer Academy & PukulEnam AI/ML Engineer)  
-**Target Architecture:** Multi-Task Direct Coordinate & Volumetric Regression (Pretrained MobileNetV3 / ResNet Backbone)  
-**Hardware Platforms:** NVIDIA DGX Cluster (A100/H100) for Training $\to$ Apple Neural Engine (ANE) via CoreML Float16 for iPadOS Deployment.
+**Target Architecture:** Multi-Task Direct Coordinate & Volumetric Regression $\to$ Parametric 3D Mesh Recovery (SMPL)  
+**Hardware Platforms:** NVIDIA DGX Cluster (H100) for Training $\to$ Apple Neural Engine (ANE) via CoreML Float16 for iPadOS Deployment.
 
 ---
 
-## 🌟 Dual-Mode Architectural Overview
+## 🏆 Research Evolution: Challenge Based Learning (CBL) Iterations
+
+Proyek ini mendokumentasikan perjalanan rekayasa AI bertahap (*learning journey*) yang memecahkan limitasi Apple Vision Framework bawaan secara berkesinambungan:
+
+| Milestone Riset | Fokus Rekayasa & Arsitektur | Dataset & Komputasi | Hasil & Evaluasi Kritis | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Iterasi 1 (v1.0)** | **2D Skeleton Rig & Heuristic Volumetric Mannequin**<br>Direct Coordinate Regression + Masked Smooth L1 Loss | **MS-COCO 2017 (114.554 Foto)**<br>NVIDIA DGX H100 (80 Epochs, 3.2 Jam) | **PCK@0.1: 84.7% \| Pixel Error: 8.8 px**<br>*Temuan Riset:* Mampu mendeteksi sendi dinamis secara presisi, namun representasi volumetrik masih mengandalkan formula silinder 2D OpenCV. | ✅ **Archived (`v1.0-iterasi1-2d-skeleton`)** |
+| **Iterasi 2 (v2.0)** | **True Parametric 3D Human Mesh Recovery (HMR)**<br>Regresi langsung parameter bentuk tubuh ($\beta \in \mathbb{R}^{10}$) dan rotasi sendi 3D ($\theta \in \mathbb{R}^{72}$) SMPL | **COCO-EFT (114.554 Foto)**<br>Fine-Tuning di atas Backbone MobileNetV3 Iterasi 1 | **Rekonstruksi Volume 3D Sejati (End-to-End)**<br>Memprediksi ketebalan massa otot dan perspektif 3D murni dari representasi laten AI. | 🚧 **Active Research Sprint** |
+
+---
+
+## 🌟 Dual-Mode Architectural Overview (Iterasi 1 Baseline)
 
 Unlike standard pose estimators that only produce flat 2D stick figures, **Neural Gesture Mannequin** is designed specifically for digital artists and webtoon creators, providing two native viewing modes:
 
@@ -18,7 +29,7 @@ Unlike standard pose estimators that only produce flat 2D stick figures, **Neura
 ```text
                        [Input Citra Pose 256x256]
                                     │
-                     [Pretrained Vision Backbone]
+               [Pretrained MobileNetV3 Backbone (Iterasi 1)]
                                     │
                   ┌─────────────────┴─────────────────┐
                   ▼                                   ▼
@@ -28,6 +39,9 @@ Unlike standard pose estimators that only produce flat 2D stick figures, **Neura
                   ▼                                   ▼
           MODE 1: SKELETON                    MODE 2: VOLUME MANNEQUIN
       (Rangka Garis Aksi & Sendi)         (Silinder 3D, Cincin Elips & Kotak)
+                  │
+                  ▼
+          [Step 5: Anime Lineart / Atari Pose Base Generator]
 ```
 
 ---
@@ -36,7 +50,7 @@ Unlike standard pose estimators that only produce flat 2D stick figures, **Neura
 
 ### 1. Requirements & Environment (Python 3.10.2)
 ```bash
-# Sesuai standar DGX kantor PukulEnam (numpy < 2 ABI protection):
+# Sesuai standar DGX kantor PukulEnam:
 pip install -r requirements.txt
 ```
 
@@ -50,11 +64,7 @@ python3 download_coco.py
 ```bash
 # Menjalankan di GPU 1 secara default di background (nohup + disown):
 ./run_dgx.sh
-
-# Atau jika ingin memilih nomor GPU tertentu (misal GPU 2):
-# ./run_dgx.sh 2
 ```
-> **Keunggulan Disconnect-Proof:** Seluruh proses (download dataset jika belum ada + training 80 epoch) berjalan di bawah `nohup` dan `disown`. Anda bisa langsung menutup terminal SSH atau mematikan laptop tanpa khawatir proses training terhenti!
 
 ### 4. Monitoring & Process Management
 ```bash
@@ -67,12 +77,9 @@ tail -f train_dgx.log
 
 ---
 
-## 💻 Local Testing on macOS (MPS / CPU)
-
-Untuk pengujian cepat di laptop Mac tanpa server DGX:
-```bash
-./run_local.sh
-```
+## 💻 Testing & Inference on Google Colab
+Notebook inferensi interaktif untuk mencoba foto kustom tersedia di:  
+👉 **`test_inference_colab.ipynb`** (Mendukung visualisasi 4-panel dan ekstraksi garis manekin anime solo ~150 MB).
 
 ---
 
