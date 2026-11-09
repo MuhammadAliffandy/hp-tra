@@ -62,7 +62,7 @@ def rot6d_to_rotmat(x: torch.Tensor) -> torch.Tensor:
 
 def forward_kinematics_torch(rotmats: torch.Tensor, shape_beta: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
     """
-    Differentiable forward kinematics in PyTorch.
+    Differentiable forward kinematics in PyTorch without in-place operations.
     rotmats: [B, 24, 3, 3]
     shape_beta: [B, 10]
     offsets: [24, 3]
@@ -72,28 +72,30 @@ def forward_kinematics_torch(rotmats: torch.Tensor, shape_beta: torch.Tensor, of
     scale_y = 1.0 + 0.05 * shape_beta[:, 0:1] # [B, 1]
     scale_fat = 1.0 + 0.06 * shape_beta[:, 1:2] # [B, 1]
 
-    scaled_offsets = offsets.unsqueeze(0).repeat(B, 1, 1) # [B, 24, 3]
-    scaled_offsets[:, :, 1] = scaled_offsets[:, :, 1] * scale_y
-    scaled_offsets[:, :, 0] = scaled_offsets[:, :, 0] * scale_fat
-    scaled_offsets[:, :, 2] = scaled_offsets[:, :, 2] * scale_fat
+    # Non-inplace scaling of template offsets
+    offsets_exp = offsets.unsqueeze(0).repeat(B, 1, 1) # [B, 24, 3]
+    scaled_x = offsets_exp[:, :, 0] * scale_fat
+    scaled_y = offsets_exp[:, :, 1] * scale_y
+    scaled_z = offsets_exp[:, :, 2] * scale_fat
+    scaled_offsets = torch.stack([scaled_x, scaled_y, scaled_z], dim=-1)
 
-    joints_3d = torch.zeros(B, 24, 3, device=rotmats.device, dtype=rotmats.dtype)
-    global_rotmats = torch.zeros(B, 24, 3, 3, device=rotmats.device, dtype=rotmats.dtype)
+    global_rotmats = [None] * 24
+    joints_3d = [None] * 24
 
     for i in range(24):
         p = SMPL_PARENTS[i]
         local_R = rotmats[:, i]
         if p == -1:
-            global_rotmats[:, i] = local_R
-            joints_3d[:, i] = scaled_offsets[:, i]
+            global_rotmats[i] = local_R
+            joints_3d[i] = scaled_offsets[:, i]
         else:
-            p_rot = global_rotmats[:, p]
+            p_rot = global_rotmats[p]
             curr_rot = torch.bmm(p_rot, local_R)
-            global_rotmats[:, i] = curr_rot
+            global_rotmats[i] = curr_rot
             delta_pos = torch.bmm(p_rot, scaled_offsets[:, i].unsqueeze(-1)).squeeze(-1)
-            joints_3d[:, i] = joints_3d[:, p] + delta_pos
+            joints_3d[i] = joints_3d[p] + delta_pos
 
-    return joints_3d
+    return torch.stack(joints_3d, dim=1)
 
 def project_3d_to_2d(joints_3d: torch.Tensor, cam: torch.Tensor) -> torch.Tensor:
     """
