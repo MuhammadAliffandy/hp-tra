@@ -238,10 +238,80 @@ def export_to_obj(vertices: np.ndarray, faces: np.ndarray, filepath: str):
             f.write(f"f {tri[0]+1} {tri[1]+1} {tri[2]+1}\n")
     print(f"💾 Exported 3D mesh to {filepath} ({len(vertices)} verts, {len(faces)} faces)")
 
-# ==============================================================================
-# Backward-Compatibility Exports & Aliases
-# ==============================================================================
-build_volumetric_mannequin = build_3d_mannequin_from_joints
+def build_volumetric_mannequin_smpl24(joints_3d: np.ndarray, shape_beta: Optional[np.ndarray] = None):
+    """
+    Constructs a 3D volumetric mannequin mesh specifically from SMPL 24 joints.
+    """
+    if shape_beta is None:
+        shape_beta = np.zeros(10, dtype=np.float32)
+
+    fat = max(0.6, 1.0 + 0.05 * float(shape_beta[1]))
+    all_verts = []
+    all_faces = []
+    v_offset = 0
+
+    def add_mesh(v, f):
+        nonlocal v_offset
+        if len(v) == 0:
+            return
+        all_verts.append(v)
+        all_faces.append(f + v_offset)
+        v_offset += len(v)
+
+    # 1. Head (Centered at Head joint 15)
+    head_pos = joints_3d[15]
+    v_h, f_h = create_ellipsoid_mesh(head_pos, [0.09 * fat, 0.12 * fat, 0.10 * fat], num_lat=10, num_lon=14)
+    add_mesh(v_h, f_h)
+
+    # 2. Neck (Spine3 joint 9 to Neck joint 12)
+    v_n, f_n = create_cylinder_mesh(joints_3d[9], joints_3d[12], 0.05 * fat, 0.045 * fat)
+    add_mesh(v_n, f_n)
+
+    # 3. Torso (Pelvis joint 0 to Spine3 joint 9)
+    v_t, f_t = create_cylinder_mesh(joints_3d[0], joints_3d[9], 0.14 * fat, 0.16 * fat, num_segments=16)
+    add_mesh(v_t, f_t)
+
+    # 4. Limbs
+    limb_pairs = [
+        # Left Arm
+        (13, 16, 0.05 * fat, 0.05 * fat),   # L_Collar to L_Shoulder
+        (16, 18, 0.055 * fat, 0.045 * fat), # L_Shoulder to L_Elbow
+        (18, 20, 0.045 * fat, 0.035 * fat), # L_Elbow to L_Wrist
+        (20, 22, 0.035 * fat, 0.02 * fat),  # L_Wrist to L_Hand
+        # Right Arm
+        (14, 17, 0.05 * fat, 0.05 * fat),   # R_Collar to R_Shoulder
+        (17, 19, 0.055 * fat, 0.045 * fat), # R_Shoulder to R_Elbow
+        (19, 21, 0.045 * fat, 0.035 * fat), # R_Elbow to R_Wrist
+        (21, 23, 0.035 * fat, 0.02 * fat),  # R_Wrist to R_Hand
+        # Left Leg
+        (0, 1, 0.09 * fat, 0.08 * fat),     # Pelvis to L_Hip
+        (1, 4, 0.085 * fat, 0.065 * fat),   # L_Hip to L_Knee (Thigh)
+        (4, 7, 0.065 * fat, 0.045 * fat),   # L_Knee to L_Ankle (Calf)
+        (7, 10, 0.045 * fat, 0.03 * fat),   # L_Ankle to L_Foot
+        # Right Leg
+        (0, 2, 0.09 * fat, 0.08 * fat),     # Pelvis to R_Hip
+        (2, 5, 0.085 * fat, 0.065 * fat),   # R_Hip to R_Knee (Thigh)
+        (5, 8, 0.065 * fat, 0.045 * fat),   # R_Knee to R_Ankle (Calf)
+        (8, 11, 0.045 * fat, 0.03 * fat),   # R_Ankle to R_Foot
+    ]
+
+    for j1, j2, r1, r2 in limb_pairs:
+        v_l, f_l = create_cylinder_mesh(joints_3d[j1], joints_3d[j2], r1, r2)
+        add_mesh(v_l, f_l)
+
+    return np.vstack(all_verts), np.vstack(all_faces)
+
+
+def build_volumetric_mannequin(joints_3d: np.ndarray, shape_beta: Optional[np.ndarray] = None):
+    """
+    Universal 3D Volumetric Mannequin Builder:
+    Automatically detects if input is SMPL 24 joints or 2D-lifted 19/17 joints
+    and builds the anatomically correct 3D mesh.
+    """
+    if len(joints_3d) == 24:
+        return build_volumetric_mannequin_smpl24(joints_3d, shape_beta)
+    else:
+        return build_3d_mannequin_from_joints(joints_3d, shape_beta)
 
 SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]
 
